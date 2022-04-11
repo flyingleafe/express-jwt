@@ -27,14 +27,14 @@
     "url": "https://www.auth0.com/"
   },
   "license": "MIT",
-  "main": "./dist",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "dependencies": {
     "express-unless": "^1.0.0",
-    "jsonwebtoken": "^8.1.0"
+    "jose": "^4.6.0"
   },
   "devDependencies": {
     "@types/express-unless": "^0.5.3",
-    "@types/jsonwebtoken": "^8.5.8",
     "@types/mocha": "^9.1.0",
     "@typescript-eslint/eslint-plugin": "^5.15.0",
     "@typescript-eslint/parser": "^5.15.0",

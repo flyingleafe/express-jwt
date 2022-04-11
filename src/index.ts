@@ -1,23 +1,22 @@
-import * as jwt from 'jsonwebtoken';
+import * as jose from 'jose';
 import * as express from 'express';
 import expressUnless from 'express-unless';
 import { UnauthorizedError } from './errors/UnauthorizedError';
 
-export type GetVerificationKey = (req: express.Request, token: jwt.Jwt | undefined) => Promise<jwt.Secret>;
-export type IsRevoked = (req: express.Request, token: jwt.Jwt | undefined) => Promise<boolean>;
+export type IsRevoked = (req: express.Request, token: string) => Promise<boolean>;
 
 type TokenGetter = (req: express.Request) => string | undefined;
 
 type Params = {
-  secret: jwt.Secret | GetVerificationKey,
+  secret: Uint8Array | jose.KeyLike | jose.JWTVerifyGetKey,
   getToken?: TokenGetter,
   isRevoked?: IsRevoked,
   credentialsRequired?: boolean,
-} & jwt.VerifyOptions;
+} & jose.JWTVerifyOptions;
 
 export { UnauthorizedError } from './errors/UnauthorizedError';
 
-export type ExpressJwtRequest<T = jwt.JwtPayload> =
+export type ExpressJwtRequest<T = jose.JWTPayload> =
   express.Request & { auth: T }
 
 
@@ -26,10 +25,10 @@ export const expressjwt = (options: Params) => {
   if (!options.algorithms) throw new RangeError('express-jwt: `algorithms` is a required option');
   if (!Array.isArray(options.algorithms)) throw new RangeError('express-jwt: `algorithms` must be an array');
 
-  const getVerificationKey: GetVerificationKey =
+  const getVerificationKey: jose.JWTVerifyGetKey =
     typeof options.secret === 'function' ?
       options.secret :
-      async () => options.secret as jwt.Secret;
+      async () => options.secret as jose.KeyLike;
 
   const credentialsRequired = typeof options.credentialsRequired === 'undefined' ? true : options.credentialsRequired;
 
@@ -77,29 +76,21 @@ export const expressjwt = (options: Params) => {
         }
       }
 
-      let decodedToken: jwt.Jwt;
-
+      let tokenPayload: jose.JWTPayload;
       try {
-        decodedToken = jwt.decode(token, { complete: true });
+        const { payload } = await jose.jwtVerify(token, getVerificationKey, options);
+        tokenPayload = payload;
       } catch (err) {
         throw new UnauthorizedError('invalid_token', err);
       }
 
-      const key = await getVerificationKey(req, decodedToken);
-
-      try {
-        jwt.verify(token, key, options);
-      } catch (err) {
-        throw new UnauthorizedError('invalid_token', err);
-      }
-
-      const isRevoked = options.isRevoked && await options.isRevoked(req, decodedToken) || false;
+      const isRevoked = options.isRevoked && await options.isRevoked(req, token) || false;
       if (isRevoked) {
         throw new UnauthorizedError('revoked_token', { message: 'The token has been revoked.' });
       }
 
-      const request = req as ExpressJwtRequest<jwt.JwtPayload | string>;
-      request.auth = decodedToken.payload;
+      const request = req as ExpressJwtRequest<jose.JWTPayload>;
+      request.auth = tokenPayload;
       next();
     } catch (err) {
       return next(err);
